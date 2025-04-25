@@ -3,14 +3,19 @@ import torch.nn as nn
 
 
 class SpectralBatchNorm2d(nn.Module):
-    def __init__(self, num_features, eps=1e-05, momentum=0.1, fft_norm="backward", affine=True,
+    def __init__(self, num_features, eps=1e-05, momentum=0.1, fft_norm="full", affine=True,
         track_running_stats=True):
         super().__init__()
         self.num_features = num_features
         self.eps = eps
         self.momentum = momentum  # default momentum the same as for batch norm layer
-        assert fft_norm in ["forward", "backward", "ortho"]
-        self.fft_norm = fft_norm
+        assert fft_norm in ["forward", "backward", "ortho", "full"]
+        if fft_norm == "full":
+            self.fft_norm = "forward"
+            self.ifft_norm = "backward"
+        else:
+            self.fft_norm = fft_norm
+            self.ifft_norm = fft_norm
         # Shape of running mean/variance and affine params
         shape = (1, self.num_features, 1, 1)
         self.track_running_stats = track_running_stats
@@ -46,7 +51,7 @@ class SpectralBatchNorm2d(nn.Module):
     def forward(self, x):
         # Input: N, C, H, W
         assert x.ndim == 4
-        N, C, H, W = x.size()
+        _, _, H, W = x.size()
         orig_dtype = x.dtype
         # It's better to run normalization in default precision
         x = x.to(dtype=torch.float32)
@@ -72,7 +77,7 @@ class SpectralBatchNorm2d(nn.Module):
             x_fft = x_fft * self.weight + self.bias
         # 6. Compute inverse FFT 2d
         # It's better to provide original signal size as stated in the documentation
-        x = torch.fft.irfft2(x_fft, s=(H, W), dim=(-2, -1), norm=self.fft_norm)
+        x = torch.fft.irfft2(x_fft, s=(H, W), dim=(-2, -1), norm=self.ifft_norm)
         x = x.to(dtype=orig_dtype)
         return x
 
@@ -81,12 +86,12 @@ class SpatialSpectralBatchNorm2d(nn.Module):
     def __init__(self, num_features, eps=1e-05, momentum=0.1, fft_norm="backward", affine=True,
         track_running_stats=True):
         super().__init__()
-        self.spatial_batchnorm = nn.BatchNorm2d(num_features, eps=eps, momentum=momentum,
-                                                affine=affine, track_running_stats=track_running_stats)
-        self.spectral_batchnorm = SpectralBatchNorm2d(num_features, eps=eps, fft_norm=fft_norm, momentum=momentum,
-                                                      affine=affine)
+        self.spatial_norm = nn.BatchNorm2d(num_features, eps=eps, momentum=momentum,
+                                           affine=affine, track_running_stats=track_running_stats)
+        self.spectral_norm = SpectralBatchNorm2d(num_features, eps=eps, fft_norm=fft_norm, momentum=momentum,
+                                                 affine=affine)
 
     def forward(self, x):
-        x = self.spatial_batchnorm(x)
-        x = self.spectral_batchnorm(x)
+        x = self.spatial_norm(x)
+        x = self.spectral_norm(x)
         return x

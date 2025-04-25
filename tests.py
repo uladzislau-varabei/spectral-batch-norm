@@ -21,9 +21,9 @@ def compute_base_stats(x):
     return stats_message
 
 
-def test_sbn_layer_forward(x_input, device, train_mode):
+def test_sbn_layer_forward(x_input, device, fft_norm ,train_mode):
     print(f"--- SpectralBatchNorm2d (train_mode={train_mode}) ---")
-    kwargs = dict(fft_norm="backward", affine=True)
+    kwargs = dict(fft_norm=fft_norm, affine=True)
     layer = SpectralBatchNorm2d(num_features=x_input.shape[1], **kwargs).to(device)
     if train_mode:
         layer.train()
@@ -38,10 +38,10 @@ def test_sbn_layer_forward(x_input, device, train_mode):
     print(f"\nOutput stats:\n{compute_base_stats(x_output)}\n")
 
 
-def test_ssbn_layer_forward(x_input, device, train_mode):
+def test_ssbn_layer_forward(x_input, device, fft_norm, train_mode):
     print(f"--- SpectralSpatialBatchNorm2d (train_mode={train_mode}) ---")
-    kwargs = dict(fft_norm="backward", affine=True)
-    layer = SpatialSpectralBatchNorm2d(num_features=x_input.shape[1]).to(device)
+    kwargs = dict(fft_norm=fft_norm, affine=True)
+    layer = SpatialSpectralBatchNorm2d(num_features=x_input.shape[1], **kwargs).to(device)
     if train_mode:
         layer.train()
     else:
@@ -57,11 +57,12 @@ def test_ssbn_layer_forward(x_input, device, train_mode):
 
 if __name__ == "__main__":
     print("Running tests...")
-    N, C, H, W = 4, 128, 64, 64
+    N, C, H, W = 4, 128, 256, 256
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     x_input = torch.randn((N, C, H, W), dtype=torch.float32).to(device)
-    test_sbn_layer_forward(x_input, device, train_mode=True)
-    test_sbn_layer_forward(x_input, device, train_mode=False)
-    test_ssbn_layer_forward(x_input, device, train_mode=True)
-    test_ssbn_layer_forward(x_input, device, train_mode=False)
+    fft_norm = ["backward", "forward", "ortho", "full"][3]
+    test_sbn_layer_forward(x_input, device, fft_norm=fft_norm, train_mode=True)
+    test_sbn_layer_forward(x_input, device, fft_norm=fft_norm, train_mode=False)
+    test_ssbn_layer_forward(x_input, device, fft_norm=fft_norm, train_mode=True)
+    test_ssbn_layer_forward(x_input, device, fft_norm=fft_norm, train_mode=False)
     print("--- All tests passed! ---")
