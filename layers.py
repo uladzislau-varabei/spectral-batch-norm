@@ -3,7 +3,8 @@ import torch.nn as nn
 
 
 class SpectralBatchNorm2d(nn.Module):
-    def __init__(self, num_features, eps=1e-05, momentum=0.1, fft_norm="backward", affine=True):
+    def __init__(self, num_features, eps=1e-05, momentum=0.1, fft_norm="backward", affine=True,
+        track_running_stats=True):
         super().__init__()
         self.num_features = num_features
         self.eps = eps
@@ -12,10 +13,16 @@ class SpectralBatchNorm2d(nn.Module):
         self.fft_norm = fft_norm
         # Shape of running mean/variance and affine params
         shape = (1, self.num_features, 1, 1)
-        # Mean must be complex,so for better serialization split it into real/im parts
-        self.register_buffer("mean_running_real", torch.zeros(shape, dtype=torch.float32))
-        self.register_buffer("mean_running_im", torch.zeros(shape, dtype=torch.float32))
-        self.register_buffer("var_running", torch.ones(shape, dtype=torch.float32))
+        self.track_running_stats = track_running_stats
+        if self.track_running_stats:
+            # Mean must be complex,so for better serialization split it into real/im parts
+            self.register_buffer("mean_running_real", torch.zeros(shape, dtype=torch.float32))
+            self.register_buffer("mean_running_im", torch.zeros(shape, dtype=torch.float32))
+            self.register_buffer("var_running", torch.ones(shape, dtype=torch.float32))
+        else:
+            self.mean_running_real = None
+            self.mean_running_im = None
+            self.var_running = None
         self.affine = affine
         if self.affine:
             self.weight = nn.Parameter(torch.ones(shape, dtype=torch.float32))
@@ -46,7 +53,7 @@ class SpectralBatchNorm2d(nn.Module):
         # 1. Compute FFT 2d
         x_fft = torch.fft.rfft2(x, s=(H, W), dim=(-2, -1), norm=self.fft_norm)
         # 2. Compute mean/variance over minibatch across channels (only in training mode)
-        if self.training:
+        if self.training or not self.track_running_stats:
             # Mean is computed separately for real and imaginary parts
             mean_real = torch.mean(x_fft.real, dim=(0, 2, 3), keepdim=True)
             mean_im = torch.mean(x_fft.imag, dim=(0, 2, 3), keepdim=True)
@@ -56,7 +63,7 @@ class SpectralBatchNorm2d(nn.Module):
             mean = torch.complex(self.mean_running_real, self.mean_running_im)
             var = self.var_running
         # 3. Compute running mean/variance (only in training mode)
-        if self.training:
+        if self.training and self.track_running_stats:
             self.update_running_stats(mean, var, x_fft)
         # 4. Normalize
         x_fft = (x_fft - mean) / torch.sqrt(var + self.eps)
@@ -67,4 +74,19 @@ class SpectralBatchNorm2d(nn.Module):
         # It's better to provide original signal size as stated in the documentation
         x = torch.fft.irfft2(x_fft, s=(H, W), dim=(-2, -1), norm=self.fft_norm)
         x = x.to(dtype=orig_dtype)
+        return x
+
+
+class SpatialSpectralBatchNorm2d(nn.Module):
+    def __init__(self, num_features, eps=1e-05, momentum=0.1, fft_norm="backward", affine=True,
+        track_running_stats=True):
+        super().__init__()
+        self.spatial_batchnorm = nn.BatchNorm2d(num_features, eps=eps, momentum=momentum,
+                                                affine=affine, track_running_stats=track_running_stats)
+        self.spectral_batchnorm = SpectralBatchNorm2d(num_features, eps=eps, fft_norm=fft_norm, momentum=momentum,
+                                                      affine=affine)
+
+    def forward(self, x):
+        x = self.spatial_batchnorm(x)
+        x = self.spectral_batchnorm(x)
         return x

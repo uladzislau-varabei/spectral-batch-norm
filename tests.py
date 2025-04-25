@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from layers import SpectralBatchNorm2d
+from layers import SpectralBatchNorm2d, SpatialSpectralBatchNorm2d
 
 
 def compute_base_stats(x):
@@ -24,12 +24,29 @@ def compute_base_stats(x):
 def test_sbn_layer_forward(x_input, device, train_mode):
     print(f"--- SpectralBatchNorm2d (train_mode={train_mode}) ---")
     kwargs = dict(fft_norm="backward", affine=True)
-    sbn_layer = SpectralBatchNorm2d(num_features=C, **kwargs).to(device)
+    layer = SpectralBatchNorm2d(num_features=x_input.shape[1], **kwargs).to(device)
     if train_mode:
-        sbn_layer.train()
+        layer.train()
     else:
-        sbn_layer.eval()
-    x_output = sbn_layer(x_input)
+        layer.eval()
+    x_output = layer(x_input)
+    shape_input = tuple(x_input.shape)
+    shape_output = tuple(x_output.shape)
+    assert shape_input == shape_output, f"Different shapes: x_input.shape={shape_input}, x_output.shape={shape_output}"
+    print(f"Layer kwargs: {kwargs}")
+    print(f"\nInput stats:\n{compute_base_stats(x_input)}")
+    print(f"\nOutput stats:\n{compute_base_stats(x_output)}\n")
+
+
+def test_ssbn_layer_forward(x_input, device, train_mode):
+    print(f"--- SpectralSpatialBatchNorm2d (train_mode={train_mode}) ---")
+    kwargs = dict(fft_norm="backward", affine=True)
+    layer = SpatialSpectralBatchNorm2d(num_features=x_input.shape[1]).to(device)
+    if train_mode:
+        layer.train()
+    else:
+        layer.eval()
+    x_output = layer(x_input)
     shape_input = tuple(x_input.shape)
     shape_output = tuple(x_output.shape)
     assert shape_input == shape_output, f"Different shapes: x_input.shape={shape_input}, x_output.shape={shape_output}"
@@ -45,4 +62,6 @@ if __name__ == "__main__":
     x_input = torch.randn((N, C, H, W), dtype=torch.float32).to(device)
     test_sbn_layer_forward(x_input, device, train_mode=True)
     test_sbn_layer_forward(x_input, device, train_mode=False)
+    test_ssbn_layer_forward(x_input, device, train_mode=True)
+    test_ssbn_layer_forward(x_input, device, train_mode=False)
     print("--- All tests passed! ---")
