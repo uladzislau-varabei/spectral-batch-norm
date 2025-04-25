@@ -83,13 +83,13 @@ class SpectralBatchNorm2d(nn.Module):
 
 
 class SpatialSpectralBatchNorm2d(nn.Module):
-    def __init__(self, num_features, eps=1e-05, momentum=0.1, fft_norm="backward", affine=True,
+    def __init__(self, num_features, eps=1e-05, momentum=0.1, fft_norm="full", affine=True,
         track_running_stats=True):
         super().__init__()
         self.spatial_norm = nn.BatchNorm2d(num_features, eps=eps, momentum=momentum,
                                            affine=affine, track_running_stats=track_running_stats)
         self.spectral_norm = SpectralBatchNorm2d(num_features, eps=eps, fft_norm=fft_norm, momentum=momentum,
-                                                 affine=affine)
+                                                 affine=affine, track_running_stats=track_running_stats)
 
     def forward(self, x):
         x = self.spatial_norm(x)
